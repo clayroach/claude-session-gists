@@ -205,15 +205,14 @@ const formatMetadataMarkdown = (
 
 /**
  * Check if a message has displayable content
+ *
+ * For a readable transcript, we only show messages with actual text content.
+ * Tool uses can optionally be shown alongside text, but messages with ONLY
+ * tool_use, tool_result, or thinking blocks are filtered out.
  */
-const hasDisplayableContent = (msg: NormalizedMessage, options: FormatOptions): boolean => {
-  // Has text content
-  if (msg.content.trim().length > 0) return true
-  // Has tool uses and we're showing them
-  if (options.includeToolUse && msg.toolUses.length > 0) return true
-  // Has tool results and we're showing them
-  if (options.includeToolUse && msg.toolResults.length > 0) return true
-  return false
+const hasDisplayableContent = (msg: NormalizedMessage): boolean => {
+  // Only show messages that have actual text content
+  return msg.content.trim().length > 0
 }
 
 const formatToMarkdown = (
@@ -227,9 +226,7 @@ const formatToMarkdown = (
   }
 
   // Filter to only messages with displayable content
-  const displayableMessages = session.messages.filter(msg =>
-    hasDisplayableContent(msg, options)
-  )
+  const displayableMessages = session.messages.filter(hasDisplayableContent)
 
   displayableMessages.forEach((msg, index) => {
     output += formatMessageMarkdown(msg, index, options)
@@ -266,9 +263,7 @@ const formatToJson = (
   options: FormatOptions
 ): string => {
   // Filter to only messages with displayable content
-  const displayableMessages = session.messages.filter(msg =>
-    hasDisplayableContent(msg, options)
-  )
+  const displayableMessages = session.messages.filter(hasDisplayableContent)
 
   const exportData: JsonExport = {
     metadata: {
@@ -307,9 +302,7 @@ const formatToHtml = (
   const title = Option.getOrElse(options.title, () => session.metadata.projectName)
 
   // Filter to only messages with displayable content
-  const displayableMessages = session.messages.filter(msg =>
-    hasDisplayableContent(msg, options)
-  )
+  const displayableMessages = session.messages.filter(hasDisplayableContent)
 
   const messagesHtml = displayableMessages.map((msg, index) => {
     const roleClass = msg.role === "user" ? "user" : "assistant"

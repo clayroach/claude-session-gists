@@ -5,7 +5,7 @@ export default defineConfig({
     target: "es2022"
   },
   test: {
-    include: ["test/**/*.test.ts"],
+    include: ["src/test/**/*.test.ts"],
     globals: false,
     testTimeout: 30000,
     sequence: {
