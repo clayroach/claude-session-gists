@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+
+COMMIT_MSG_FILE=$1
+COMMIT_SOURCE=$2
+
+# Skip for merge, squash, or amend commits
+if [ "$COMMIT_SOURCE" = "merge" ] || [ "$COMMIT_SOURCE" = "squash" ]; then
+  exit 0
+fi
+
+# Skip if this is an amend (has commit SHA as third arg)
+if [ -n "$3" ]; then
+  exit 0
+fi
+
+# Try to create gist and append to commit message
+# Use pnpm dev for local testing, or claude-session if globally installed
+GIST_TRAILER=""
+
+if command -v claude-session &> /dev/null; then
+  GIST_TRAILER=$(claude-session gist --commit 2>/dev/null)
+elif [ -f "$(dirname "$0")/../package.json" ]; then
+  # Running in the project itself, use pnpm dev
+  GIST_TRAILER=$(cd "$(dirname "$0")/.." && pnpm dev gist --commit 2>/dev/null)
+fi
+
+# Only append if we got a valid trailer
+if [ -n "$GIST_TRAILER" ] && [[ "$GIST_TRAILER" == Claude-Session:* ]]; then
+  # Add blank line and trailer to commit message
+  echo "" >> "$COMMIT_MSG_FILE"
+  echo "$GIST_TRAILER" >> "$COMMIT_MSG_FILE"
+fi
+
+exit 0
