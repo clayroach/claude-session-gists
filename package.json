@@ -1,0 +1,122 @@
+{
+  "name": "@effect/claude-session",
+  "version": "0.1.0",
+  "description": "Effect-TS utilities for extracting and archiving Claude Code sessions",
+  "type": "module",
+  "license": "MIT",
+  "author": "Clay Roach",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/clayroach/claude-session"
+  },
+  "bugs": {
+    "url": "https://github.com/clayroach/claude-session/issues"
+  },
+  "homepage": "https://github.com/clayroach/claude-session#readme",
+  "publishConfig": {
+    "access": "public",
+    "directory": "dist",
+    "provenance": false
+  },
+  "scripts": {
+    "build": "pnpm build-esm && pnpm build-annotate && pnpm build-cjs && pnpm build-pack",
+    "build-esm": "tsc -b tsconfig.build.json",
+    "build-annotate": "babel build/esm --plugins annotate-pure-calls --out-dir build/esm --source-maps",
+    "build-cjs": "babel build/esm --plugins @babel/transform-export-namespace-from --plugins @babel/transform-modules-commonjs --out-dir build/cjs --source-maps",
+    "build-pack": "pnpm build-pack-json && pnpm build-pack-copy",
+    "build-pack-json": "tsx scripts/pack.ts",
+    "build-pack-copy": "cp -r build/dts build/esm build/cjs README.md LICENSE dist/",
+    "dev": "tsx src/bin/cli.ts",
+    "test": "vitest",
+    "check": "tsc -b tsconfig.json",
+    "lint": "eslint src test",
+    "clean": "rm -rf build dist .tsbuildinfo"
+  },
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dts/index.d.ts",
+        "default": "./esm/index.js"
+      },
+      "require": {
+        "types": "./dts/index.d.ts",
+        "default": "./cjs/index.js"
+      }
+    },
+    "./Session": {
+      "import": {
+        "types": "./dts/Session.d.ts",
+        "default": "./esm/Session.js"
+      },
+      "require": {
+        "types": "./dts/Session.d.ts",
+        "default": "./cjs/Session.js"
+      }
+    },
+    "./Gist": {
+      "import": {
+        "types": "./dts/Gist.d.ts",
+        "default": "./esm/Gist.js"
+      },
+      "require": {
+        "types": "./dts/Gist.d.ts",
+        "default": "./cjs/Gist.js"
+      }
+    },
+    "./Formatter": {
+      "import": {
+        "types": "./dts/Formatter.d.ts",
+        "default": "./esm/Formatter.js"
+      },
+      "require": {
+        "types": "./dts/Formatter.d.ts",
+        "default": "./cjs/Formatter.js"
+      }
+    }
+  },
+  "bin": {
+    "claude-session": "./esm/bin/cli.js"
+  },
+  "main": "./cjs/index.js",
+  "module": "./esm/index.js",
+  "types": "./dts/index.d.ts",
+  "keywords": [
+    "effect",
+    "effect-ts",
+    "claude",
+    "claude-code",
+    "session",
+    "gist",
+    "github",
+    "observability",
+    "devtools"
+  ],
+  "peerDependencies": {
+    "effect": "^3.0.0"
+  },
+  "dependencies": {
+    "@effect/cli": "^0.72.0",
+    "@effect/platform": "^0.82.0",
+    "@effect/platform-node": "^0.78.0"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.27.0",
+    "@babel/core": "^7.27.0",
+    "@babel/plugin-transform-export-namespace-from": "^7.27.0",
+    "@babel/plugin-transform-modules-commonjs": "^7.27.0",
+    "@eslint/js": "^9.26.0",
+    "@types/node": "^22.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.32.0",
+    "@typescript-eslint/parser": "^8.32.0",
+    "babel-plugin-annotate-pure-calls": "^0.4.0",
+    "effect": "^3.18.0",
+    "eslint": "^9.26.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0",
+    "vitest": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@10.23.0+sha512.21c4e5698002ade97e4efe8b8b4a89a8de3c85a37919f957e7a0f30f38fbc5bbdd05980ffe29179b2fb6e6e691242e098d945d1601772cad0fef5fb6411e2a4b"
+}
