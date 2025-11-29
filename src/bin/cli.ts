@@ -13,6 +13,8 @@
  */
 import { Command, Options } from "@effect/cli"
 import { NodeContext, NodeRuntime } from "@effect/platform-node"
+import * as PlatformCommand from "@effect/platform/Command"
+import * as CommandExecutor from "@effect/platform/CommandExecutor"
 import { Console, Effect, Layer, Option } from "effect"
 import * as FileSystem from "@effect/platform/FileSystem"
 import * as Path from "@effect/platform/Path"
@@ -24,7 +26,8 @@ import {
   FormatterLive,
   GistService,
   GistServiceLive,
-  type OutputFormat
+  type OutputFormat,
+  type Session
 } from "../index.js"
 
 // ============================================================================
@@ -65,6 +68,74 @@ const commitOption = Options.boolean("commit").pipe(
   Options.withDescription("Output gist URL in format suitable for git commit trailers"),
   Options.withDefault(false)
 )
+
+const sinceOption = Options.text("since").pipe(
+  Options.withAlias("s"),
+  Options.withDescription("Only include messages since timestamp (ISO format) or 'last-commit'"),
+  Options.optional
+)
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Get the timestamp of the last git commit
+ */
+const getLastCommitTimestamp: Effect.Effect<
+  Option.Option<Date>,
+  never,
+  CommandExecutor.CommandExecutor
+> = Effect.gen(function* () {
+  const command = PlatformCommand.make("git", "log", "-1", "--format=%cI")
+  const result = yield* PlatformCommand.string(command).pipe(
+    Effect.map(output => {
+      const trimmed = output.trim()
+      if (!trimmed) return Option.none()
+      const date = new Date(trimmed)
+      return isNaN(date.getTime()) ? Option.none() : Option.some(date)
+    }),
+    Effect.catchAll(() => Effect.succeed(Option.none()))
+  )
+  return result
+})
+
+/**
+ * Parse the --since option into a Date
+ */
+const parseSinceOption = (
+  since: Option.Option<string>
+): Effect.Effect<Option.Option<Date>, never, CommandExecutor.CommandExecutor> =>
+  Option.match(since, {
+    onNone: () => Effect.succeed(Option.none()),
+    onSome: (value) => {
+      if (value === "last-commit") {
+        return getLastCommitTimestamp
+      }
+      const date = new Date(value)
+      if (isNaN(date.getTime())) {
+        return Effect.succeed(Option.none())
+      }
+      return Effect.succeed(Option.some(date))
+    }
+  })
+
+/**
+ * Filter session messages to only those after a given timestamp
+ */
+const filterSessionSince = (session: Session, since: Option.Option<Date>): Session =>
+  Option.match(since, {
+    onNone: () => session,
+    onSome: (sinceDate) => ({
+      ...session,
+      messages: session.messages.filter(msg =>
+        Option.match(msg.timestamp, {
+          onNone: () => true, // Include messages without timestamps
+          onSome: (ts) => ts.getTime() > sinceDate.getTime()
+        })
+      )
+    })
+  })
 
 // ============================================================================
 // List Command
@@ -128,9 +199,10 @@ const exportCommand = Command.make(
     project: projectOption,
     format: formatOption,
     output: outputOption,
-    includeTools: includeToolsOption
+    includeTools: includeToolsOption,
+    since: sinceOption
   },
-  ({ project, format, output, includeTools }) =>
+  ({ project, format, output, includeTools, since }) =>
     Effect.gen(function* () {
       const sessionService = yield* SessionService
       const formatter = yield* Formatter
@@ -139,12 +211,19 @@ const exportCommand = Command.make(
 
       yield* Console.log("🔍 Loading session...")
 
-      const session = yield* Option.match(project, {
+      const fullSession = yield* Option.match(project, {
         onNone: () => sessionService.loadMostRecent,
         onSome: (p) => sessionService.loadByProject(p)
       })
 
+      // Filter by --since if provided
+      const sinceDate = yield* parseSinceOption(since)
+      const session = filterSessionSince(fullSession, sinceDate)
+
       yield* Console.log(`📝 Formatting as ${format}...`)
+      if (Option.isSome(sinceDate)) {
+        yield* Console.log(`   Filtering to ${session.messages.length} messages since ${sinceDate.value.toISOString()}`)
+      }
 
       const formatted = yield* formatter.format(session, format as OutputFormat, {
         includeToolUse: includeTools
@@ -185,9 +264,10 @@ const gistCommand = Command.make(
     format: formatOption,
     public: publicOption,
     includeTools: includeToolsOption,
-    commit: commitOption
+    commit: commitOption,
+    since: sinceOption
   },
-  ({ project, format, public: isPublic, includeTools, commit }) =>
+  ({ project, format, public: isPublic, includeTools, commit, since }) =>
     Effect.gen(function* () {
       const sessionService = yield* SessionService
       const formatter = yield* Formatter
@@ -206,13 +286,20 @@ const gistCommand = Command.make(
         yield* Console.log("🔍 Loading session...")
       }
 
-      const session = yield* Option.match(project, {
+      const fullSession = yield* Option.match(project, {
         onNone: () => sessionService.loadMostRecent,
         onSome: (p) => sessionService.loadByProject(p)
       })
 
+      // Filter by --since if provided
+      const sinceDate = yield* parseSinceOption(since)
+      const session = filterSessionSince(fullSession, sinceDate)
+
       if (!commit) {
         yield* Console.log(`📝 Formatting as ${format}...`)
+        if (Option.isSome(sinceDate)) {
+          yield* Console.log(`   Filtering to ${session.messages.length} messages since ${sinceDate.value.toISOString()}`)
+        }
       }
 
       const formatted = yield* formatter.format(session, format as OutputFormat, {

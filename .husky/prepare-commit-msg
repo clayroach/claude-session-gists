@@ -14,14 +14,15 @@ if [ -n "$3" ]; then
 fi
 
 # Try to create gist and append to commit message
-# Use pnpm dev for local testing, or claude-session if globally installed
+# Prefer local pnpm dev for this project, otherwise use globally installed claude-session
 GIST_TRAILER=""
+PROJECT_DIR="$(dirname "$0")/.."
 
-if command -v claude-session &> /dev/null; then
-  GIST_TRAILER=$(claude-session gist --commit 2>/dev/null)
-elif [ -f "$(dirname "$0")/../package.json" ]; then
+if [ -f "$PROJECT_DIR/package.json" ] && grep -q "@effect/claude-session" "$PROJECT_DIR/package.json"; then
   # Running in the project itself, use pnpm dev
-  GIST_TRAILER=$(cd "$(dirname "$0")/.." && pnpm dev gist --commit 2>/dev/null)
+  GIST_TRAILER=$(cd "$PROJECT_DIR" && pnpm dev gist --commit --since last-commit 2>/dev/null)
+elif command -v claude-session &> /dev/null; then
+  GIST_TRAILER=$(claude-session gist --commit --since last-commit 2>/dev/null)
 fi
 
 # Only append if we got a valid trailer

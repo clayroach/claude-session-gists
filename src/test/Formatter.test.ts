@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest"
-import { Effect, Layer, Option } from "effect"
-import { Formatter, FormatterLive, type OutputFormat } from "../Formatter.js"
-import type { Session, NormalizedMessage, SessionMetadata } from "../Session.js"
+import { Effect, Option } from "effect"
+import { Formatter, FormatterLive } from "../Formatter.js"
+import type { Session, NormalizedMessage } from "../Session.js"
 
 const createMessage = (
   role: "user" | "assistant",
@@ -71,7 +71,7 @@ describe("Formatter", () => {
       expect(claudeMatches?.length).toBe(1)
     })
 
-    it("should filter out messages with empty content even if they have tool uses", async () => {
+    it("should show tool-use-only messages as summaries when tools enabled", async () => {
       const session = createSession([
         createMessage("user", "Do something"),
         createMessage("assistant", "", [{ name: "Bash", input: { command: "ls" } }]), // Tool use only
@@ -81,13 +81,36 @@ describe("Formatter", () => {
       const result = await Effect.runPromise(
         Effect.gen(function* () {
           const formatter = yield* Formatter
-          return yield* formatter.toMarkdown(session)
+          return yield* formatter.toMarkdown(session, { includeToolUse: true })
         }).pipe(Effect.provide(FormatterLive))
       )
 
       expect(result).toContain("Do something")
       expect(result).toContain("Here's what I found")
-      // Empty tool-use-only message should be filtered
+      expect(result).toContain("*Used tools: Bash*")
+      // Should have 2 Claude messages (tool use summary + text)
+      const claudeMatches = result.match(/## 🤖 Claude/g)
+      expect(claudeMatches?.length).toBe(2)
+    })
+
+    it("should filter out tool-use-only messages when tools disabled", async () => {
+      const session = createSession([
+        createMessage("user", "Do something"),
+        createMessage("assistant", "", [{ name: "Bash", input: { command: "ls" } }]), // Tool use only
+        createMessage("assistant", "Here's what I found")
+      ])
+
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const formatter = yield* Formatter
+          return yield* formatter.toMarkdown(session, { includeToolUse: false })
+        }).pipe(Effect.provide(FormatterLive))
+      )
+
+      expect(result).toContain("Do something")
+      expect(result).toContain("Here's what I found")
+      expect(result).not.toContain("Used tools")
+      // Only one Claude message when tools disabled
       const claudeMatches = result.match(/## 🤖 Claude/g)
       expect(claudeMatches?.length).toBe(1)
     })
