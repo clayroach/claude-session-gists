@@ -370,7 +370,7 @@ export const SessionServiceLive = Layer.effect(
           }))
         )
 
-        // Find all chat_*.jsonl files
+        // Find all UUID-named session files
         const sessions: SessionMetadata[] = []
 
         for (const entry of entries) {
@@ -389,14 +389,20 @@ export const SessionServiceLive = Layer.effect(
           )
 
           for (const file of projectEntries) {
-            if (file.startsWith("chat_") && file.endsWith(".jsonl")) {
+            // Match UUID-named session files (e.g., e409aacf-33a8-4b59-9cee-42cd5261bff7.jsonl)
+            // Skip agent-*.jsonl files (subagent transcripts)
+            const isUuidSession = file.endsWith(".jsonl") &&
+              !file.startsWith("agent-") &&
+              /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/i.test(file)
+
+            if (isUuidSession) {
               const filePath = path.join(projectPath, file)
               const stat = yield* fs.stat(filePath).pipe(
                 Effect.catchAll(() => Effect.succeed(null))
               )
 
               if (stat && Option.isSome(stat.mtime)) {
-                const sessionId = file.replace("chat_", "").replace(".jsonl", "")
+                const sessionId = file.replace(".jsonl", "")
 
                 // Count lines (messages)
                 const content = yield* fs.readFileString(filePath).pipe(
@@ -556,14 +562,19 @@ export const makeSessionService = (config?: Partial<SessionConfigOptions>) =>
             )
 
             for (const file of projectEntries) {
-              if (file.startsWith("chat_") && file.endsWith(".jsonl")) {
+              // Match UUID-named session files
+              const isUuidSession = file.endsWith(".jsonl") &&
+                !file.startsWith("agent-") &&
+                /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/i.test(file)
+
+              if (isUuidSession) {
                 const filePath = pathService.join(projectPath, file)
                 const stat = yield* fs.stat(filePath).pipe(
                   Effect.catchAll(() => Effect.succeed(null))
                 )
 
                 if (stat && Option.isSome(stat.mtime)) {
-                  const sessionId = file.replace("chat_", "").replace(".jsonl", "")
+                  const sessionId = file.replace(".jsonl", "")
                   const content = yield* fs.readFileString(filePath).pipe(
                     Effect.catchAll(() => Effect.succeed(""))
                   )

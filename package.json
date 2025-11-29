@@ -1,6 +1,6 @@
 {
   "name": "@effect/claude-session",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Effect-TS utilities for extracting and archiving Claude Code sessions",
   "type": "module",
   "license": "MIT",
@@ -30,7 +30,10 @@
     "test": "vitest",
     "check": "tsc -b tsconfig.json",
     "lint": "eslint src test",
-    "clean": "rm -rf build dist .tsbuildinfo"
+    "clean": "rm -rf build dist .tsbuildinfo",
+    "prepublish": "pnpm clean && pnpm build",
+    "publish:local": "pnpm -C dist publish --registry http://localhost:4873/ --no-git-checks",
+    "publish:npm": "pnpm -C dist publish --access public --no-git-checks"
   },
   "exports": {
     ".": {
