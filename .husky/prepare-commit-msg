@@ -25,11 +25,14 @@ elif command -v claude-session &> /dev/null; then
   GIST_TRAILER=$(claude-session gist --commit --since last-commit 2>/dev/null)
 fi
 
+# Extract just the Claude-Session line (pnpm adds prefix output)
+GIST_LINE=$(echo "$GIST_TRAILER" | grep "^Claude-Session:" | tail -1)
+
 # Only append if we got a valid trailer
-if [ -n "$GIST_TRAILER" ] && [[ "$GIST_TRAILER" == Claude-Session:* ]]; then
+if [ -n "$GIST_LINE" ]; then
   # Add blank line and trailer to commit message
   echo "" >> "$COMMIT_MSG_FILE"
-  echo "$GIST_TRAILER" >> "$COMMIT_MSG_FILE"
+  echo "$GIST_LINE" >> "$COMMIT_MSG_FILE"
 fi
 
 exit 0
