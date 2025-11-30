@@ -95,3 +95,70 @@ After publishing to Verdaccio:
 pnpm install -g @effect/claude-session --registry http://localhost:4873/
 claude-session list
 ```
+
+## Husky Hooks (Automatic Session Archiving)
+
+This project uses Husky hooks to automatically archive Claude Code sessions with each commit.
+
+### How It Works
+
+1. **prepare-commit-msg** - Runs before commit is finalized:
+   - Executes `pnpm dev gist --commit --since last-commit`
+   - Creates a gist with only messages since the last commit
+   - Appends `Claude-Session: <url>` trailer to commit message
+   - Saves gist URL to `/tmp/claude-session-gist-url`
+
+2. **post-commit** - Runs after commit is created:
+   - Reads gist URL from temp file
+   - Executes `pnpm dev link-commit --gist <url>`
+   - Updates gist with commit SHA, branch, and message
+   - Adds clickable link back to the commit on GitHub
+
+### Hook Files
+
+- `.husky/prepare-commit-msg` - Creates gist and adds to commit message
+- `.husky/post-commit` - Links commit info back to gist
+- `.husky/pre-commit` - Currently disabled (placeholder)
+
+### Commit Message Format
+
+Each commit automatically gets a trailer:
+
+```
+feat: Add new feature
+
+Claude-Session: https://gist.github.com/username/abc123
+```
+
+### Gist Content
+
+Gists include:
+- Commit info block with SHA, branch, and message
+- Link back to commit on GitHub
+- Only messages from the Claude session since the last commit
+- Tool uses shown as summaries or in `<details>` blocks
+
+### Scoping Messages
+
+The `--since last-commit` flag ensures gists only contain relevant conversation:
+- Gets timestamp of last commit via `git log -1 --format=%cI`
+- Filters session messages to only those after that timestamp
+- Results in focused, per-commit conversation archives
+
+### Disabling Hooks
+
+To commit without creating a gist:
+```bash
+git commit --no-verify -m "your message"
+```
+
+### Testing Hooks
+
+Test the workflow manually:
+```bash
+# Create a gist for current session since last commit
+pnpm dev gist --commit --since last-commit
+
+# Link current commit to a gist
+pnpm dev link-commit --gist <gist-url>
+```

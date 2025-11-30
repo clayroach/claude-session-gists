@@ -13,6 +13,8 @@
  */
 import { Command, Options } from "@effect/cli"
 import { NodeContext, NodeRuntime } from "@effect/platform-node"
+import * as PlatformCommand from "@effect/platform/Command"
+import * as CommandExecutor from "@effect/platform/CommandExecutor"
 import { Console, Effect, Layer, Option } from "effect"
 import * as FileSystem from "@effect/platform/FileSystem"
 import * as Path from "@effect/platform/Path"
@@ -24,7 +26,8 @@ import {
   FormatterLive,
   GistService,
   GistServiceLive,
-  type OutputFormat
+  type OutputFormat,
+  type Session
 } from "../index.js"
 
 // ============================================================================
@@ -65,6 +68,74 @@ const commitOption = Options.boolean("commit").pipe(
   Options.withDescription("Output gist URL in format suitable for git commit trailers"),
   Options.withDefault(false)
 )
+
+const sinceOption = Options.text("since").pipe(
+  Options.withAlias("s"),
+  Options.withDescription("Only include messages since timestamp (ISO format) or 'last-commit'"),
+  Options.optional
+)
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Get the timestamp of the last git commit
+ */
+const getLastCommitTimestamp: Effect.Effect<
+  Option.Option<Date>,
+  never,
+  CommandExecutor.CommandExecutor
+> = Effect.gen(function* () {
+  const command = PlatformCommand.make("git", "log", "-1", "--format=%cI")
+  const result = yield* PlatformCommand.string(command).pipe(
+    Effect.map(output => {
+      const trimmed = output.trim()
+      if (!trimmed) return Option.none()
+      const date = new Date(trimmed)
+      return isNaN(date.getTime()) ? Option.none() : Option.some(date)
+    }),
+    Effect.catchAll(() => Effect.succeed(Option.none()))
+  )
+  return result
+})
+
+/**
+ * Parse the --since option into a Date
+ */
+const parseSinceOption = (
+  since: Option.Option<string>
+): Effect.Effect<Option.Option<Date>, never, CommandExecutor.CommandExecutor> =>
+  Option.match(since, {
+    onNone: () => Effect.succeed(Option.none()),
+    onSome: (value) => {
+      if (value === "last-commit") {
+        return getLastCommitTimestamp
+      }
+      const date = new Date(value)
+      if (isNaN(date.getTime())) {
+        return Effect.succeed(Option.none())
+      }
+      return Effect.succeed(Option.some(date))
+    }
+  })
+
+/**
+ * Filter session messages to only those after a given timestamp
+ */
+const filterSessionSince = (session: Session, since: Option.Option<Date>): Session =>
+  Option.match(since, {
+    onNone: () => session,
+    onSome: (sinceDate) => ({
+      ...session,
+      messages: session.messages.filter(msg =>
+        Option.match(msg.timestamp, {
+          onNone: () => true, // Include messages without timestamps
+          onSome: (ts) => ts.getTime() > sinceDate.getTime()
+        })
+      )
+    })
+  })
 
 // ============================================================================
 // List Command
@@ -128,9 +199,10 @@ const exportCommand = Command.make(
     project: projectOption,
     format: formatOption,
     output: outputOption,
-    includeTools: includeToolsOption
+    includeTools: includeToolsOption,
+    since: sinceOption
   },
-  ({ project, format, output, includeTools }) =>
+  ({ project, format, output, includeTools, since }) =>
     Effect.gen(function* () {
       const sessionService = yield* SessionService
       const formatter = yield* Formatter
@@ -139,12 +211,19 @@ const exportCommand = Command.make(
 
       yield* Console.log("🔍 Loading session...")
 
-      const session = yield* Option.match(project, {
+      const fullSession = yield* Option.match(project, {
         onNone: () => sessionService.loadMostRecent,
         onSome: (p) => sessionService.loadByProject(p)
       })
 
+      // Filter by --since if provided
+      const sinceDate = yield* parseSinceOption(since)
+      const session = filterSessionSince(fullSession, sinceDate)
+
       yield* Console.log(`📝 Formatting as ${format}...`)
+      if (Option.isSome(sinceDate)) {
+        yield* Console.log(`   Filtering to ${session.messages.length} messages since ${sinceDate.value.toISOString()}`)
+      }
 
       const formatted = yield* formatter.format(session, format as OutputFormat, {
         includeToolUse: includeTools
@@ -185,9 +264,10 @@ const gistCommand = Command.make(
     format: formatOption,
     public: publicOption,
     includeTools: includeToolsOption,
-    commit: commitOption
+    commit: commitOption,
+    since: sinceOption
   },
-  ({ project, format, public: isPublic, includeTools, commit }) =>
+  ({ project, format, public: isPublic, includeTools, commit, since }) =>
     Effect.gen(function* () {
       const sessionService = yield* SessionService
       const formatter = yield* Formatter
@@ -206,13 +286,20 @@ const gistCommand = Command.make(
         yield* Console.log("🔍 Loading session...")
       }
 
-      const session = yield* Option.match(project, {
+      const fullSession = yield* Option.match(project, {
         onNone: () => sessionService.loadMostRecent,
         onSome: (p) => sessionService.loadByProject(p)
       })
 
+      // Filter by --since if provided
+      const sinceDate = yield* parseSinceOption(since)
+      const session = filterSessionSince(fullSession, sinceDate)
+
       if (!commit) {
         yield* Console.log(`📝 Formatting as ${format}...`)
+        if (Option.isSome(sinceDate)) {
+          yield* Console.log(`   Filtering to ${session.messages.length} messages since ${sinceDate.value.toISOString()}`)
+        }
       }
 
       const formatted = yield* formatter.format(session, format as OutputFormat, {
@@ -301,12 +388,160 @@ const hookCommand = Command.make(
 )
 
 // ============================================================================
+// Link Commit Command (for post-commit hook)
+// ============================================================================
+
+const gistUrlOption = Options.text("gist").pipe(
+  Options.withAlias("g"),
+  Options.withDescription("Gist URL or ID to update")
+)
+
+const repoOption = Options.text("repo").pipe(
+  Options.withAlias("r"),
+  Options.withDescription("GitHub repository (owner/repo) for commit links"),
+  Options.optional
+)
+
+/**
+ * Get commit info from git
+ */
+const getCommitInfo = Effect.gen(function* () {
+  const shaCommand = PlatformCommand.make("git", "rev-parse", "HEAD")
+  const sha = yield* PlatformCommand.string(shaCommand).pipe(
+    Effect.map(s => s.trim()),
+    Effect.catchAll(() => Effect.succeed(""))
+  )
+
+  const messageCommand = PlatformCommand.make("git", "log", "-1", "--format=%B")
+  const message = yield* PlatformCommand.string(messageCommand).pipe(
+    Effect.map(s => s.trim()),
+    Effect.catchAll(() => Effect.succeed(""))
+  )
+
+  const branchCommand = PlatformCommand.make("git", "rev-parse", "--abbrev-ref", "HEAD")
+  const branch = yield* PlatformCommand.string(branchCommand).pipe(
+    Effect.map(s => s.trim()),
+    Effect.catchAll(() => Effect.succeed(""))
+  )
+
+  // Try to get remote URL for repo info
+  const remoteCommand = PlatformCommand.make("git", "remote", "get-url", "origin")
+  const remoteUrl = yield* PlatformCommand.string(remoteCommand).pipe(
+    Effect.map(s => s.trim()),
+    Effect.catchAll(() => Effect.succeed(""))
+  )
+
+  // Parse repo from remote URL (handles both https and ssh formats)
+  let repo = ""
+  const httpsMatch = remoteUrl.match(/github\.com\/([^/]+\/[^/.]+)/)
+  const sshMatch = remoteUrl.match(/github\.com:([^/]+\/[^/.]+)/)
+  if (httpsMatch) repo = httpsMatch[1]!
+  else if (sshMatch) repo = sshMatch[1]!
+
+  return { sha, message, branch, repo }
+})
+
+/**
+ * Create commit info block to prepend to gist
+ */
+const createCommitInfoBlock = (
+  sha: string,
+  message: string,
+  branch: string,
+  repo: string
+): string => {
+  const shortSha = sha.substring(0, 7)
+  const commitUrl = repo ? `https://github.com/${repo}/commit/${sha}` : ""
+  const commitLink = commitUrl ? `[${shortSha}](${commitUrl})` : shortSha
+
+  // Extract just the first line of commit message
+  const firstLine = message.split("\n")[0] || message
+
+  return `> **Commit:** ${commitLink}
+> **Branch:** ${branch}
+> **Message:** ${firstLine}
+
+---
+
+`
+}
+
+const linkCommitCommand = Command.make(
+  "link-commit",
+  {
+    gist: gistUrlOption,
+    repo: repoOption
+  },
+  ({ gist, repo }) =>
+    Effect.gen(function* () {
+      const gistService = yield* GistService
+
+      // Extract gist ID from URL or use as-is
+      const gistId = gist.includes("/") ? gist.split("/").pop()! : gist
+
+      // Get commit info
+      const commitInfo = yield* getCommitInfo
+      const effectiveRepo = Option.getOrElse(repo, () => commitInfo.repo)
+
+      if (!commitInfo.sha) {
+        yield* Console.error("No commit found")
+        return
+      }
+
+      // Get the filename from the gist
+      const filesCommand = PlatformCommand.make("gh", "gist", "view", gistId, "--files")
+      const filename = yield* PlatformCommand.string(filesCommand).pipe(
+        Effect.map(s => s.trim().split("\n")[0] || "session.md"),
+        Effect.catchAll(() => Effect.succeed("session.md"))
+      )
+
+      // Fetch current gist content via gh CLI
+      const viewCommand = PlatformCommand.make("gh", "gist", "view", gistId, "-f", filename)
+      const currentContent = yield* PlatformCommand.string(viewCommand).pipe(
+        Effect.catchAll(() => Effect.succeed(""))
+      )
+
+      // Create commit info block and prepend
+      const commitBlock = createCommitInfoBlock(
+        commitInfo.sha,
+        commitInfo.message,
+        commitInfo.branch,
+        effectiveRepo
+      )
+
+      // Find the metadata table end (first --- after the table)
+      // The content looks like: # Title\n\n| ... |\n\n---\n\n## First message
+      const metadataEndMatch = currentContent.match(/\n---\n\n/)
+      let updatedContent: string
+      if (metadataEndMatch && metadataEndMatch.index !== undefined) {
+        const insertPos = metadataEndMatch.index + metadataEndMatch[0].length
+        updatedContent = currentContent.slice(0, insertPos) + commitBlock + currentContent.slice(insertPos)
+      } else {
+        // Fallback: prepend to content
+        updatedContent = commitBlock + currentContent
+      }
+
+      // Update the gist
+      yield* gistService.update({
+        gistId,
+        files: [{ filename, content: updatedContent }]
+      })
+
+      yield* Console.log(`Linked commit ${commitInfo.sha.substring(0, 7)} to gist ${gistId}`)
+    }).pipe(
+      Effect.catchAll((error) =>
+        Console.error(`Failed to link commit: ${error}`)
+      )
+    )
+)
+
+// ============================================================================
 // Main Command
 // ============================================================================
 
 const mainCommand = Command.make("claude-session").pipe(
   Command.withDescription("Export Claude Code sessions to GitHub Gists for decision provenance"),
-  Command.withSubcommands([listCommand, exportCommand, gistCommand, hookCommand])
+  Command.withSubcommands([listCommand, exportCommand, gistCommand, hookCommand, linkCommitCommand])
 )
 
 // ============================================================================

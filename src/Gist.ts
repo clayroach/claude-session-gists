@@ -53,6 +53,16 @@ export interface GistCreateOptions {
  * @since 0.1.0
  * @category models
  */
+export interface GistUpdateOptions {
+  readonly gistId: string
+  readonly description?: string
+  readonly files?: ReadonlyArray<GistFile>
+}
+
+/**
+ * @since 0.1.0
+ * @category models
+ */
 export interface GistResult {
   readonly id: string
   readonly url: string
@@ -116,6 +126,13 @@ export class GistService extends Context.Tag("@effect/claude-session/GistService
     ) => Effect.Effect<GistResult, GistError>
 
     /**
+     * Update an existing GitHub Gist
+     */
+    readonly update: (
+      options: GistUpdateOptions
+    ) => Effect.Effect<GistResult, GistError>
+
+    /**
      * Check if GitHub authentication is available
      */
     readonly checkAuth: Effect.Effect<boolean, GistError>
@@ -172,6 +189,40 @@ const createGistViaCli = (
       htmlUrl,
       rawUrl: Option.none(),
       description: options.description,
+      createdAt: new Date()
+    }
+  })
+
+const updateGistViaCli = (
+  options: GistUpdateOptions
+): Effect.Effect<GistResult, GistError, CommandExecutor.CommandExecutor | Scope.Scope> =>
+  Effect.gen(function* () {
+    const file = options.files?.[0]
+    if (!file) {
+      return yield* Effect.fail(new GistError({
+        reason: "ApiError",
+        message: "At least one file is required for update"
+      }))
+    }
+
+    // gh gist edit <gist-id> -f <filename> - (reads from stdin)
+    const args = ["gist", "edit", options.gistId, "-f", file.filename, "-"]
+    const command = Command.make("gh", ...args).pipe(Command.feed(file.content))
+
+    yield* Command.string(command).pipe(
+      Effect.mapError((e) => new GistError({
+        reason: "CliError",
+        message: "Failed to update gist via gh CLI",
+        cause: e
+      }))
+    )
+
+    return {
+      id: options.gistId,
+      url: `https://api.github.com/gists/${options.gistId}`,
+      htmlUrl: `https://gist.github.com/${options.gistId}`,
+      rawUrl: Option.none(),
+      description: options.description ?? "",
       createdAt: new Date()
     }
   })
@@ -245,6 +296,66 @@ const createGistViaApi = (
 
     const gist = response as GitHubGistResponse
     const firstFile = options.files[0]
+    const rawUrl = firstFile
+      ? Option.fromNullable(gist.files[firstFile.filename]?.raw_url)
+      : Option.none()
+
+    return {
+      id: gist.id,
+      url: gist.url,
+      htmlUrl: gist.html_url,
+      rawUrl,
+      description: gist.description,
+      createdAt: new Date(gist.created_at)
+    }
+  })
+
+const updateGistViaApi = (
+  options: GistUpdateOptions,
+  token: string
+): Effect.Effect<GistResult, GistError, HttpClient.HttpClient | Scope.Scope> =>
+  Effect.gen(function* () {
+    const client = yield* HttpClient.HttpClient
+
+    const filesPayload: Record<string, { content: string }> = {}
+    for (const file of options.files ?? []) {
+      filesPayload[file.filename] = { content: file.content }
+    }
+
+    const baseRequest = HttpClientRequest.patch(`https://api.github.com/gists/${options.gistId}`).pipe(
+      HttpClientRequest.setHeaders({
+        "Authorization": `Bearer ${token}`,
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "@effect/claude-session"
+      })
+    )
+
+    const body: Record<string, unknown> = { files: filesPayload }
+    if (options.description) {
+      body["description"] = options.description
+    }
+
+    const request = yield* HttpClientRequest.bodyJson(baseRequest, body).pipe(
+      Effect.mapError((e) => new GistError({
+        reason: "ApiError",
+        message: "Failed to create request body",
+        cause: e
+      }))
+    )
+
+    const response = yield* client.execute(request).pipe(
+      Effect.flatMap((res) => res.json),
+      Effect.retry(Schedule.recurs(3).pipe(Schedule.intersect(Schedule.exponential("1 second")))),
+      Effect.mapError((e) => new GistError({
+        reason: "ApiError",
+        message: "Failed to update gist via API",
+        cause: e
+      }))
+    )
+
+    const gist = response as GitHubGistResponse
+    const firstFile = options.files?.[0]
     const rawUrl = firstFile
       ? Option.fromNullable(gist.files[firstFile.filename]?.raw_url)
       : Option.none()
@@ -351,6 +462,63 @@ export const GistServiceLive = Layer.effect(
           return yield* Effect.fail(new GistError({
             reason: "AuthError",
             message: "No authentication method available. Either run 'gh auth login' or set GITHUB_TOKEN environment variable."
+          }))
+        }),
+
+      update: (options) =>
+        Effect.gen(function* () {
+          // Try CLI first if preferred
+          if (config.preferCli) {
+            const cliAuth = yield* Effect.serviceOption(CommandExecutor.CommandExecutor).pipe(
+              Effect.flatMap(executorOpt =>
+                Option.isSome(executorOpt)
+                  ? checkAuthViaCli().pipe(
+                      Effect.provide(Layer.succeed(CommandExecutor.CommandExecutor, Option.getOrThrow(executorOpt))),
+                      Effect.scoped
+                    )
+                  : Effect.succeed(false)
+              ),
+              Effect.catchAll(() => Effect.succeed(false))
+            )
+
+            if (cliAuth) {
+              return yield* Effect.serviceOption(CommandExecutor.CommandExecutor).pipe(
+                Effect.flatMap(executorOpt =>
+                  Option.isSome(executorOpt)
+                    ? updateGistViaCli(options).pipe(
+                        Effect.provide(Layer.succeed(CommandExecutor.CommandExecutor, Option.getOrThrow(executorOpt))),
+                        Effect.scoped
+                      )
+                    : Effect.fail(new GistError({
+                        reason: "CliError",
+                        message: "CommandExecutor not available"
+                      }))
+                )
+              )
+            }
+          }
+
+          // Fall back to API
+          if (Option.isSome(config.token)) {
+            const tokenValue = Option.getOrThrow(config.token)
+            return yield* Effect.serviceOption(HttpClient.HttpClient).pipe(
+              Effect.flatMap(clientOpt =>
+                Option.isSome(clientOpt)
+                  ? updateGistViaApi(options, tokenValue).pipe(
+                      Effect.provide(Layer.succeed(HttpClient.HttpClient, Option.getOrThrow(clientOpt))),
+                      Effect.scoped
+                    )
+                  : Effect.fail(new GistError({
+                      reason: "ApiError",
+                      message: "HttpClient not available"
+                    }))
+              )
+            )
+          }
+
+          return yield* Effect.fail(new GistError({
+            reason: "AuthError",
+            message: "No authentication method available."
           }))
         }),
 

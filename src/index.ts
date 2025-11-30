@@ -187,7 +187,13 @@ export {
    * @since 0.1.0
    */
   type GistCreateOptions,
-  
+
+  /**
+   * Gist update options
+   * @since 0.1.0
+   */
+  type GistUpdateOptions,
+
   /**
    * Gist result type
    * @since 0.1.0

@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+
+COMMIT_MSG_FILE=$1
+COMMIT_SOURCE=$2
+
+# Skip for merge, squash, or amend commits
+if [ "$COMMIT_SOURCE" = "merge" ] || [ "$COMMIT_SOURCE" = "squash" ]; then
+  exit 0
+fi
+
+# Skip if this is an amend (has commit SHA as third arg)
+if [ -n "$3" ]; then
+  exit 0
+fi
+
+# Try to create gist and append to commit message
+# Prefer local pnpm dev for this project, otherwise use globally installed claude-session
+GIST_TRAILER=""
+PROJECT_DIR="$(dirname "$0")/.."
+
+if [ -f "$PROJECT_DIR/package.json" ] && grep -q "@effect/claude-session" "$PROJECT_DIR/package.json"; then
+  # Running in the project itself, use pnpm dev
+  GIST_TRAILER=$(cd "$PROJECT_DIR" && pnpm dev gist --commit --since last-commit 2>/dev/null)
+elif command -v claude-session &> /dev/null; then
+  GIST_TRAILER=$(claude-session gist --commit --since last-commit 2>/dev/null)
+fi
+
+# Extract just the Claude-Session line (pnpm adds prefix output)
+GIST_LINE=$(echo "$GIST_TRAILER" | grep "^Claude-Session:" | tail -1)
+
+# Only append if we got a valid trailer
+if [ -n "$GIST_LINE" ]; then
+  # Add blank line and trailer to commit message
+  echo "" >> "$COMMIT_MSG_FILE"
+  echo "$GIST_LINE" >> "$COMMIT_MSG_FILE"
+
+  # Save gist URL to temp file for post-commit hook
+  echo "$GIST_LINE" > /tmp/claude-session-gist-url
+fi
+
+exit 0

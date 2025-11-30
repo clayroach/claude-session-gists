@@ -33,7 +33,8 @@
     "clean": "rm -rf build dist .tsbuildinfo",
     "prepublish": "pnpm clean && pnpm build",
     "publish:local": "pnpm -C dist publish --registry http://localhost:4873/ --no-git-checks",
-    "publish:npm": "pnpm -C dist publish --access public --no-git-checks"
+    "publish:npm": "pnpm -C dist publish --access public --no-git-checks",
+    "prepare": "husky"
   },
   "exports": {
     ".": {
@@ -114,6 +115,7 @@
     "babel-plugin-annotate-pure-calls": "^0.4.0",
     "effect": "^3.18.0",
     "eslint": "^9.26.0",
+    "husky": "^9.1.7",
     "tsx": "^4.19.0",
     "typescript": "^5.8.0",
     "vitest": "^2.1.0"

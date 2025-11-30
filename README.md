@@ -1,227 +1,121 @@
 # @effect/claude-session
 
-Effect-TS utilities for extracting and archiving Claude Code sessions.
+Archive your Claude Code conversations alongside your commits for complete decision provenance.
 
 [![npm version](https://badge.fury.io/js/@effect%2Fclaude-session.svg)](https://badge.fury.io/js/@effect%2Fclaude-session)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Why?
 
-When working with Claude Code, you often make important design and implementation decisions through conversation. These decisions deserve the same level of traceability as your code changes. This package enables **decision provenance** by:
+Important design and implementation decisions happen in Claude Code conversations. Link these conversations to your commits so you can understand the "why" behind every code change.
 
-- Extracting Claude Code sessions from `~/.claude/projects`
-- Formatting them as Markdown, JSON, or HTML
-- Archiving to GitHub Gists with a single command
-- Integrating with git commits via trailers
+## Quick Start
 
-Now you can link your commits to the conversations that led to them.
-
-## Installation
+### 1. Install Globally
 
 ```bash
-npm install @effect/claude-session
-# or
-pnpm add @effect/claude-session
-# or
-bun add @effect/claude-session
+pnpm add -g @effect/claude-session
 ```
 
-For CLI usage, install globally:
+### 2. Authenticate with GitHub
 
 ```bash
-npm install -g @effect/claude-session
+gh auth login
 ```
 
-## CLI Usage
-
-### List Sessions
+Or set a personal access token:
 
 ```bash
+export GITHUB_TOKEN=ghp_your_token_here
+```
+
+### 3. Use with Git Hooks (Recommended)
+
+Install Husky in your project:
+
+```bash
+pnpm add -D husky
+pnpm exec husky init
+```
+
+Create `.husky/prepare-commit-msg`:
+
+```bash
+#!/usr/bin/env bash
+
+COMMIT_MSG_FILE=$1
+COMMIT_SOURCE=$2
+
+# Skip for merge/squash/amend
+if [ "$COMMIT_SOURCE" = "merge" ] || [ "$COMMIT_SOURCE" = "squash" ] || [ -n "$3" ]; then
+  exit 0
+fi
+
+# Create gist and save URL
+GIST_TRAILER=$(claude-session gist --commit --since last-commit 2>/dev/null | grep "^Claude-Session:" | tail -1)
+
+if [ -n "$GIST_TRAILER" ]; then
+  echo "" >> "$COMMIT_MSG_FILE"
+  echo "$GIST_TRAILER" >> "$COMMIT_MSG_FILE"
+  echo "$GIST_TRAILER" > /tmp/claude-session-gist-url
+fi
+```
+
+Create `.husky/post-commit`:
+
+```bash
+#!/usr/bin/env bash
+
+# Link commit to gist
+if [ -f /tmp/claude-session-gist-url ]; then
+  GIST_URL=$(cat /tmp/claude-session-gist-url | sed 's/Claude-Session: //')
+  rm -f /tmp/claude-session-gist-url
+  [ -n "$GIST_URL" ] && claude-session link-commit --gist "$GIST_URL" 2>/dev/null
+fi
+```
+
+Make them executable:
+
+```bash
+chmod +x .husky/prepare-commit-msg .husky/post-commit
+```
+
+**That's it!** Now every commit will automatically:
+
+- Create a gist with the Claude conversation since your last commit
+- Add the gist URL to your commit message
+- Update the gist with a link back to the commit
+
+## CLI Commands
+
+```bash
+# List available sessions
 claude-session list
-claude-session list --project myproject    # Filter by project name
+
+# Export a session
+claude-session export --format markdown
+
+# Create a gist manually
+claude-session gist --since last-commit
+
+# Link a commit to an existing gist
+claude-session link-commit --gist <gist-url>
 ```
 
-### Export Session
+## Example Workflow
 
-```bash
-claude-session export                      # Export most recent to file
-claude-session export --format json        # Export as JSON
-claude-session export --project foo        # Export specific project
-claude-session export --output ./out.md    # Custom output path
-```
-
-### Create GitHub Gist
-
-```bash
-claude-session gist                    # Create secret gist
-claude-session gist --public           # Create public gist
-claude-session gist --commit           # Output for git commit trailer
-```
-
-### Git Commit Integration
-
-```bash
-# Add gist URL as commit trailer
-git commit -m "Implement feature X" -m "$(claude-session gist --commit)"
-```
+1. Work on a feature with Claude Code
+2. Commit your changes: `git commit -m "feat: Add user authentication"`
+3. The hooks automatically:
+   - Create a gist with your Claude conversation
+   - Add `Claude-Session: https://gist.github.com/...` to the commit message
+   - Update the gist with commit SHA and link
+4. Push: `git push`
+5. View your commit on GitHub - click the gist link to see the conversation that led to the code
 
 ## Programmatic Usage
 
-```typescript
-import { Effect, Layer } from "effect"
-import { NodeContext, NodeRuntime } from "@effect/platform-node"
-import {
-  SessionService,
-  makeSessionService,
-  Formatter,
-  FormatterLive,
-  GistService,
-  GistServiceLive
-} from "@effect/claude-session"
-
-const program = Effect.gen(function* () {
-  const sessions = yield* SessionService
-  const formatter = yield* Formatter
-  const gist = yield* GistService
-
-  // Discover all sessions
-  const allSessions = yield* sessions.discover
-  console.log(`Found ${allSessions.length} sessions`)
-
-  // Load the most recent
-  const session = yield* sessions.loadMostRecent
-  console.log(`Project: ${session.metadata.projectName}`)
-  console.log(`Messages: ${session.messages.length}`)
-
-  // Format as markdown
-  const markdown = yield* formatter.toMarkdown(session, {
-    includeToolUse: true,
-    includeTimestamps: true
-  })
-
-  // Create a gist
-  const result = yield* gist.create({
-    description: `Claude session: ${session.metadata.projectName}`,
-    files: [{ filename: "session.md", content: markdown }],
-    public: false
-  })
-
-  console.log(`Gist URL: ${result.htmlUrl}`)
-})
-
-// Compose layers
-const MainLayer = Layer.mergeAll(
-  makeSessionService(),
-  FormatterLive,
-  GistServiceLive
-)
-
-// Run
-program.pipe(
-  Effect.provide(MainLayer),
-  Effect.provide(NodeContext.layer),
-  NodeRuntime.runMain
-)
-```
-
-## Claude Code Hook Integration
-
-Automatically archive sessions when Claude Code stops:
-
-```json
-// ~/.claude/settings.json
-{
-  "hooks": {
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "claude-session hook --format markdown"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-See [docs/hooks.md](./docs/hooks.md) for detailed hook configuration.
-
-## API Reference
-
-### Session Module
-
-| Export | Description |
-|--------|-------------|
-| `SessionService` | Service tag for session operations |
-| `SessionServiceLive` | Default implementation |
-| `makeSessionService(config?)` | Create custom service layer |
-| `SessionError` | Error type for session operations |
-| `Session` | Complete session with messages |
-| `SessionMetadata` | Session metadata (id, project, dates) |
-| `NormalizedMessage` | Parsed message with role, content, tools |
-
-### Formatter Module
-
-| Export | Description |
-|--------|-------------|
-| `Formatter` | Service tag for formatting |
-| `FormatterLive` | Default implementation |
-| `OutputFormat` | `"markdown" \| "json" \| "html"` |
-| `FormatOptions` | Configuration for formatting |
-
-### Gist Module
-
-| Export | Description |
-|--------|-------------|
-| `GistService` | Service tag for GitHub Gist operations |
-| `GistServiceLive` | Default implementation (CLI + API) |
-| `makeGistService(config?)` | Create custom service layer |
-| `GistResult` | Created gist information |
-| `GistConfig` | Configuration (token, preferCli) |
-
-## Configuration
-
-### Session Discovery
-
-By default, sessions are discovered from `~/.claude/projects`. Customize with:
-
-```typescript
-const customService = makeSessionService({
-  claudeDir: "/custom/path/.claude",
-  projectFilter: Option.some("my-project")
-})
-```
-
-### GitHub Authentication
-
-The package supports two authentication methods:
-
-1. **GitHub CLI** (preferred): Run `gh auth login`
-2. **Personal Access Token**: Set `GITHUB_TOKEN` environment variable
-
-```typescript
-const customGist = makeGistService({
-  token: Option.some("ghp_..."),
-  preferCli: false
-})
-```
-
-## VSCode Extension Integration
-
-This package is designed to potentially integrate with the Effect Dev Tools VSCode extension. The session data can be visualized alongside traces and metrics for a complete development observability experience.
-
-## Contributing
-
-This package follows Effect-TS conventions and could be contributed to the Effect ecosystem. Key areas for contribution:
-
-- [ ] Additional output formats (PDF, Notion, Obsidian)
-- [ ] Session summarization using @effect/ai
-- [ ] VSCode extension integration
-- [ ] Real-time session streaming
-- [ ] Session diffing and comparison
+For library usage with Effect-TS, see the [API documentation](./docs/api.md).
 
 ## License
 
