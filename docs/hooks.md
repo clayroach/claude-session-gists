@@ -6,7 +6,7 @@ This directory contains configuration for automatically archiving Claude Code se
 
 1. Install the CLI globally:
    ```bash
-   npm install -g @effect/claude-session
+   pnpm add -g claude-session
    ```
 
 2. Add the hook to your Claude Code settings. Create or edit `~/.claude/settings.json`:

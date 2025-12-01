@@ -93,7 +93,7 @@ export interface GistConfigOptions {
  * @since 0.1.0
  * @category tags
  */
-export class GistConfig extends Context.Tag("@effect/claude-session/GistConfig")<
+export class GistConfig extends Context.Tag("claude-session/GistConfig")<
   GistConfig,
   GistConfigOptions
 >() {
@@ -115,7 +115,7 @@ export class GistConfig extends Context.Tag("@effect/claude-session/GistConfig")
  * @since 0.1.0
  * @category tags
  */
-export class GistService extends Context.Tag("@effect/claude-session/GistService")<
+export class GistService extends Context.Tag("claude-session/GistService")<
   GistService,
   {
     /**
@@ -268,7 +268,7 @@ const createGistViaApi = (
         "Authorization": `Bearer ${token}`,
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
-        "User-Agent": "@effect/claude-session"
+        "User-Agent": "claude-session"
       })
     )
 
@@ -327,7 +327,7 @@ const updateGistViaApi = (
         "Authorization": `Bearer ${token}`,
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
-        "User-Agent": "@effect/claude-session"
+        "User-Agent": "claude-session"
       })
     )
 
@@ -380,7 +380,7 @@ const checkAuthViaApi = (
       HttpClientRequest.setHeaders({
         "Authorization": `Bearer ${token}`,
         "Accept": "application/vnd.github+json",
-        "User-Agent": "@effect/claude-session"
+        "User-Agent": "claude-session"
       })
     )
 

@@ -18,7 +18,7 @@ fi
 # Link the commit to the gist
 PROJECT_DIR="$(dirname "$0")/.."
 
-if [ -f "$PROJECT_DIR/package.json" ] && grep -q "@effect/claude-session" "$PROJECT_DIR/package.json"; then
+if [ -f "$PROJECT_DIR/package.json" ] && grep -q "claude-session-gists" "$PROJECT_DIR/package.json"; then
   # Running in the project itself, use pnpm dev
   cd "$PROJECT_DIR" && pnpm dev link-commit --gist "$GIST_URL" 2>/dev/null
 elif command -v claude-session &> /dev/null; then

@@ -68,7 +68,7 @@ export const defaultFormatOptions: FormatOptions = {
  * @since 0.1.0
  * @category tags
  */
-export class Formatter extends Context.Tag("@effect/claude-session/Formatter")<
+export class Formatter extends Context.Tag("claude-session/Formatter")<
   Formatter,
   {
     /**
@@ -247,7 +247,7 @@ const formatToMarkdown = (
     output += formatMessageMarkdown(msg, index, options)
   })
 
-  output += `\n*Exported by @effect/claude-session on ${new Date().toISOString()}*\n`
+  output += `\n*Exported by claude-session on ${new Date().toISOString()}*\n`
 
   return output
 }
@@ -481,7 +481,7 @@ const formatToHtml = (
     </main>
     
     <footer>
-      Exported by @effect/claude-session on ${new Date().toISOString()}
+      Exported by claude-session on ${new Date().toISOString()}
     </footer>
   </div>
 </body>

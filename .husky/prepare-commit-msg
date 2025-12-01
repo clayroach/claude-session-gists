@@ -18,7 +18,7 @@ fi
 GIST_TRAILER=""
 PROJECT_DIR="$(dirname "$0")/.."
 
-if [ -f "$PROJECT_DIR/package.json" ] && grep -q "@effect/claude-session" "$PROJECT_DIR/package.json"; then
+if [ -f "$PROJECT_DIR/package.json" ] && grep -q "claude-session-gists" "$PROJECT_DIR/package.json"; then
   # Running in the project itself, use pnpm dev
   GIST_TRAILER=$(cd "$PROJECT_DIR" && pnpm dev gist --commit --since last-commit 2>/dev/null)
 elif command -v claude-session &> /dev/null; then

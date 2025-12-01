@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-`@effect/claude-session` is an Effect-TS library for extracting and archiving Claude Code sessions. It provides:
+`claude-session` is an Effect-TS library for extracting and archiving Claude Code sessions. It provides:
 - Session discovery from `~/.claude/projects`
 - Multiple output formats (Markdown, JSON, HTML)
 - GitHub Gist integration for archiving
@@ -92,7 +92,7 @@ The `dist/` directory contains the publishable package with separate ESM, CJS, a
 
 After publishing to Verdaccio:
 ```bash
-pnpm install -g @effect/claude-session --registry http://localhost:4873/
+pnpm install -g claude-session --registry http://localhost:4873/
 claude-session list
 ```
 

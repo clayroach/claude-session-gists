@@ -40,6 +40,12 @@ const projectOption = Options.text("project").pipe(
   Options.optional
 )
 
+const allProjectsOption = Options.boolean("all").pipe(
+  Options.withAlias("a"),
+  Options.withDescription("Show sessions from all projects (not just current directory)"),
+  Options.withDefault(false)
+)
+
 const formatOption = Options.choice("format", ["markdown", "json", "html"]).pipe(
   Options.withAlias("f"),
   Options.withDescription("Output format"),
@@ -143,49 +149,59 @@ const filterSessionSince = (session: Session, since: Option.Option<Date>): Sessi
 
 const listCommand = Command.make(
   "list",
-  { project: projectOption },
-  ({ project }) =>
+  { project: projectOption, all: allProjectsOption },
+  ({ project, all }) =>
     Effect.gen(function* () {
-      const sessionService = yield* SessionService
-
-      yield* Console.log("\n📁 Claude Code Sessions\n")
-      yield* Console.log("─".repeat(80))
-
-      const sessions = yield* sessionService.discover
-
-      if (sessions.length === 0) {
-        yield* Console.log("No sessions found.")
-        yield* Console.log("\nMake sure you have used Claude Code at least once.")
-        return
-      }
-
-      // Filter if project specified
-      const filtered = Option.match(project, {
-        onNone: () => sessions,
-        onSome: (p) => sessions.filter(s => 
-          s.projectName.toLowerCase().includes(p.toLowerCase())
-        )
+      // Construct session service with appropriate scopeToCwd setting
+      // --all disables scoping to CWD, --project also disables it (explicit filter)
+      const scopeToCwd = !all && Option.isNone(project)
+      const sessionLayer = makeSessionService({
+        projectFilter: project,
+        scopeToCwd
       })
 
-      yield* Console.log(
-        `${"#".padEnd(4)} ${"Project".padEnd(40)} ${"Modified".padEnd(20)} ${"Msgs".padEnd(6)}`
-      )
-      yield* Console.log("─".repeat(80))
+      yield* Effect.gen(function* () {
+        const sessionService = yield* SessionService
 
-      for (let i = 0; i < filtered.length; i++) {
-        const s = filtered[i]!
-        const modified = s.lastModified.toISOString().substring(0, 16).replace("T", " ")
-        const projectDisplay = s.projectName.length > 38 
-          ? s.projectName.substring(0, 35) + "..." 
-          : s.projectName
-        
+        yield* Console.log("\n📁 Claude Code Sessions\n")
+        yield* Console.log("─".repeat(80))
+
+        const sessions = yield* sessionService.discover
+
+        if (sessions.length === 0) {
+          if (scopeToCwd) {
+            yield* Console.log("No sessions found for current directory.")
+            yield* Console.log("\nUse --all to list sessions from all projects.")
+          } else {
+            yield* Console.log("No sessions found.")
+            yield* Console.log("\nMake sure you have used Claude Code at least once.")
+          }
+          return
+        }
+
         yield* Console.log(
-          `${String(i + 1).padEnd(4)} ${projectDisplay.padEnd(40)} ${modified.padEnd(20)} ${String(s.messageCount).padEnd(6)}`
+          `${"#".padEnd(4)} ${"Project".padEnd(40)} ${"Modified".padEnd(20)} ${"Msgs".padEnd(6)}`
         )
-      }
+        yield* Console.log("─".repeat(80))
 
-      yield* Console.log("")
-      yield* Console.log(`Total: ${filtered.length} session(s)`)
+        for (let i = 0; i < sessions.length; i++) {
+          const s = sessions[i]!
+          const modified = s.lastModified.toISOString().substring(0, 16).replace("T", " ")
+          const projectDisplay = s.projectName.length > 38
+            ? s.projectName.substring(0, 35) + "..."
+            : s.projectName
+
+          yield* Console.log(
+            `${String(i + 1).padEnd(4)} ${projectDisplay.padEnd(40)} ${modified.padEnd(20)} ${String(s.messageCount).padEnd(6)}`
+          )
+        }
+
+        yield* Console.log("")
+        yield* Console.log(`Total: ${sessions.length} session(s)`)
+        if (scopeToCwd) {
+          yield* Console.log(`(Showing sessions for current directory. Use --all to see all projects.)`)
+        }
+      }).pipe(Effect.provide(sessionLayer))
     })
 )
 
@@ -204,52 +220,57 @@ const exportCommand = Command.make(
   },
   ({ project, format, output, includeTools, since }) =>
     Effect.gen(function* () {
-      const sessionService = yield* SessionService
-      const formatter = yield* Formatter
-      const fs = yield* FileSystem.FileSystem
-      const path = yield* Path.Path
-
-      yield* Console.log("🔍 Loading session...")
-
-      const fullSession = yield* Option.match(project, {
-        onNone: () => sessionService.loadMostRecent,
-        onSome: (p) => sessionService.loadByProject(p)
+      // Construct session service scoped to current project (unless --project specified)
+      const sessionLayer = makeSessionService({
+        projectFilter: project,
+        scopeToCwd: Option.isNone(project)
       })
 
-      // Filter by --since if provided
-      const sinceDate = yield* parseSinceOption(since)
-      const session = filterSessionSince(fullSession, sinceDate)
+      yield* Effect.gen(function* () {
+        const sessionService = yield* SessionService
+        const formatter = yield* Formatter
+        const fs = yield* FileSystem.FileSystem
+        const path = yield* Path.Path
 
-      yield* Console.log(`📝 Formatting as ${format}...`)
-      if (Option.isSome(sinceDate)) {
-        yield* Console.log(`   Filtering to ${session.messages.length} messages since ${sinceDate.value.toISOString()}`)
-      }
+        yield* Console.log("🔍 Loading session...")
 
-      const formatted = yield* formatter.format(session, format as OutputFormat, {
-        includeToolUse: includeTools
-      })
+        const fullSession = yield* sessionService.loadMostRecent
 
-      // Output to file or stdout
-      const outputPath = Option.match(output, {
-        onNone: () => Option.none<string>(),
-        onSome: (p) => Option.some(p)
-      })
+        // Filter by --since if provided
+        const sinceDate = yield* parseSinceOption(since)
+        const session = filterSessionSince(fullSession, sinceDate)
 
-      if (Option.isSome(outputPath)) {
-        const outPath = Option.getOrThrow(outputPath)
-        yield* fs.writeFileString(outPath, formatted)
-        yield* Console.log(`✅ Exported to: ${outPath}`)
-      } else {
-        // Generate default filename
-        const filename = formatter.generateFilename(session.metadata, format as OutputFormat)
-        const defaultPath = path.join(process.cwd(), filename)
-        
-        yield* fs.writeFileString(defaultPath, formatted)
-        yield* Console.log(`✅ Exported to: ${defaultPath}`)
-      }
+        yield* Console.log(`📝 Formatting as ${format}...`)
+        if (Option.isSome(sinceDate)) {
+          yield* Console.log(`   Filtering to ${session.messages.length} messages since ${sinceDate.value.toISOString()}`)
+        }
 
-      yield* Console.log(`   Project: ${session.metadata.projectName}`)
-      yield* Console.log(`   Messages: ${session.messages.length}`)
+        const formatted = yield* formatter.format(session, format as OutputFormat, {
+          includeToolUse: includeTools
+        })
+
+        // Output to file or stdout
+        const outputPath = Option.match(output, {
+          onNone: () => Option.none<string>(),
+          onSome: (p) => Option.some(p)
+        })
+
+        if (Option.isSome(outputPath)) {
+          const outPath = Option.getOrThrow(outputPath)
+          yield* fs.writeFileString(outPath, formatted)
+          yield* Console.log(`✅ Exported to: ${outPath}`)
+        } else {
+          // Generate default filename
+          const filename = formatter.generateFilename(session.metadata, format as OutputFormat)
+          const defaultPath = path.join(process.cwd(), filename)
+
+          yield* fs.writeFileString(defaultPath, formatted)
+          yield* Console.log(`✅ Exported to: ${defaultPath}`)
+        }
+
+        yield* Console.log(`   Project: ${session.metadata.projectName}`)
+        yield* Console.log(`   Messages: ${session.messages.length}`)
+      }).pipe(Effect.provide(sessionLayer))
     })
 )
 
@@ -269,70 +290,75 @@ const gistCommand = Command.make(
   },
   ({ project, format, public: isPublic, includeTools, commit, since }) =>
     Effect.gen(function* () {
-      const sessionService = yield* SessionService
-      const formatter = yield* Formatter
-      const gistService = yield* GistService
-
-      // Check authentication
-      const authMethod = yield* gistService.getAuthMethod
-      if (authMethod === "none") {
-        yield* Console.error("❌ No GitHub authentication found.")
-        yield* Console.error("   Run 'gh auth login' or set GITHUB_TOKEN environment variable.")
-        return yield* Effect.fail(new Error("No authentication"))
-      }
-
-      if (!commit) {
-        yield* Console.log(`🔐 Using ${authMethod} authentication`)
-        yield* Console.log("🔍 Loading session...")
-      }
-
-      const fullSession = yield* Option.match(project, {
-        onNone: () => sessionService.loadMostRecent,
-        onSome: (p) => sessionService.loadByProject(p)
+      // Construct session service scoped to current project (unless --project specified)
+      const sessionLayer = makeSessionService({
+        projectFilter: project,
+        scopeToCwd: Option.isNone(project)
       })
 
-      // Filter by --since if provided
-      const sinceDate = yield* parseSinceOption(since)
-      const session = filterSessionSince(fullSession, sinceDate)
+      yield* Effect.gen(function* () {
+        const sessionService = yield* SessionService
+        const formatter = yield* Formatter
+        const gistService = yield* GistService
 
-      if (!commit) {
-        yield* Console.log(`📝 Formatting as ${format}...`)
-        if (Option.isSome(sinceDate)) {
-          yield* Console.log(`   Filtering to ${session.messages.length} messages since ${sinceDate.value.toISOString()}`)
+        // Check authentication
+        const authMethod = yield* gistService.getAuthMethod
+        if (authMethod === "none") {
+          yield* Console.error("❌ No GitHub authentication found.")
+          yield* Console.error("   Run 'gh auth login' or set GITHUB_TOKEN environment variable.")
+          return yield* Effect.fail(new Error("No authentication"))
         }
-      }
 
-      const formatted = yield* formatter.format(session, format as OutputFormat, {
-        includeToolUse: includeTools
-      })
+        if (!commit) {
+          yield* Console.log(`🔐 Using ${authMethod} authentication`)
+          yield* Console.log("🔍 Loading session...")
+        }
 
-      const filename = formatter.generateFilename(session.metadata, format as OutputFormat)
+        const fullSession = yield* sessionService.loadMostRecent
 
-      if (!commit) {
-        yield* Console.log("🚀 Creating gist...")
-      }
+        // Filter by --since if provided
+        const sinceDate = yield* parseSinceOption(since)
+        const session = filterSessionSince(fullSession, sinceDate)
 
-      const result = yield* gistService.create({
-        description: `Claude Code session: ${session.metadata.projectName} (${session.metadata.lastModified.toISOString().substring(0, 10)})`,
-        files: [{ filename, content: formatted }],
-        public: isPublic
-      })
+        if (!commit) {
+          yield* Console.log(`📝 Formatting as ${format}...`)
+          if (Option.isSome(sinceDate)) {
+            yield* Console.log(`   Filtering to ${session.messages.length} messages since ${sinceDate.value.toISOString()}`)
+          }
+        }
 
-      if (commit) {
-        // Output just the URL in a format suitable for git commit trailers
-        yield* Console.log(`Claude-Session: ${result.htmlUrl}`)
-      } else {
-        yield* Console.log("")
-        yield* Console.log("✅ Gist created successfully!")
-        yield* Console.log("")
-        yield* Console.log(`   🔗 URL: ${result.htmlUrl}`)
-        yield* Console.log(`   📋 ID: ${result.id}`)
-        yield* Console.log(`   🔒 Visibility: ${isPublic ? "public" : "secret"}`)
-        yield* Console.log(`   📄 File: ${filename}`)
-        yield* Console.log("")
-        yield* Console.log("💡 To add to your commit message, use:")
-        yield* Console.log(`   git commit -m "Your message" -m "Claude-Session: ${result.htmlUrl}"`)
-      }
+        const formatted = yield* formatter.format(session, format as OutputFormat, {
+          includeToolUse: includeTools
+        })
+
+        const filename = formatter.generateFilename(session.metadata, format as OutputFormat)
+
+        if (!commit) {
+          yield* Console.log("🚀 Creating gist...")
+        }
+
+        const result = yield* gistService.create({
+          description: `Claude Code session: ${session.metadata.projectName} (${session.metadata.lastModified.toISOString().substring(0, 10)})`,
+          files: [{ filename, content: formatted }],
+          public: isPublic
+        })
+
+        if (commit) {
+          // Output just the URL in a format suitable for git commit trailers
+          yield* Console.log(`Claude-Session: ${result.htmlUrl}`)
+        } else {
+          yield* Console.log("")
+          yield* Console.log("✅ Gist created successfully!")
+          yield* Console.log("")
+          yield* Console.log(`   🔗 URL: ${result.htmlUrl}`)
+          yield* Console.log(`   📋 ID: ${result.id}`)
+          yield* Console.log(`   🔒 Visibility: ${isPublic ? "public" : "secret"}`)
+          yield* Console.log(`   📄 File: ${filename}`)
+          yield* Console.log("")
+          yield* Console.log("💡 To add to your commit message, use:")
+          yield* Console.log(`   git commit -m "Your message" -m "Claude-Session: ${result.htmlUrl}"`)
+        }
+      }).pipe(Effect.provide(sessionLayer))
     })
 )
 
@@ -348,35 +374,40 @@ const hookCommand = Command.make(
   },
   ({ format, public: isPublic }) =>
     Effect.gen(function* () {
-      // Read hook payload from stdin
-      // The Stop hook provides session info via stdin
-      const sessionService = yield* SessionService
-      const formatter = yield* Formatter
-      const gistService = yield* GistService
+      // Construct session service scoped to current project
+      const sessionLayer = makeSessionService({ scopeToCwd: true })
 
-      // For hooks, we always use the most recent session
-      const session = yield* sessionService.loadMostRecent
+      yield* Effect.gen(function* () {
+        // Read hook payload from stdin
+        // The Stop hook provides session info via stdin
+        const sessionService = yield* SessionService
+        const formatter = yield* Formatter
+        const gistService = yield* GistService
 
-      const formatted = yield* formatter.format(session, format as OutputFormat, {
-        includeToolUse: true
-      })
+        // For hooks, we use the most recent session for the current project
+        const session = yield* sessionService.loadMostRecent
 
-      const filename = formatter.generateFilename(session.metadata, format as OutputFormat)
+        const formatted = yield* formatter.format(session, format as OutputFormat, {
+          includeToolUse: true
+        })
 
-      const result = yield* gistService.create({
-        description: `Claude Code session: ${session.metadata.projectName} (auto-archived)`,
-        files: [{ filename, content: formatted }],
-        public: isPublic
-      })
+        const filename = formatter.generateFilename(session.metadata, format as OutputFormat)
 
-      // Output JSON for hook consumption
-      yield* Console.log(JSON.stringify({
-        success: true,
-        gistUrl: result.htmlUrl,
-        gistId: result.id,
-        project: session.metadata.projectName,
-        messageCount: session.messages.length
-      }))
+        const result = yield* gistService.create({
+          description: `Claude Code session: ${session.metadata.projectName} (auto-archived)`,
+          files: [{ filename, content: formatted }],
+          public: isPublic
+        })
+
+        // Output JSON for hook consumption
+        yield* Console.log(JSON.stringify({
+          success: true,
+          gistUrl: result.htmlUrl,
+          gistId: result.id,
+          project: session.metadata.projectName,
+          messageCount: session.messages.length
+        }))
+      }).pipe(Effect.provide(sessionLayer))
     }).pipe(
       Effect.catchAll((error) =>
         Console.log(JSON.stringify({
@@ -558,7 +589,6 @@ const cli = Command.run(mainCommand, {
 // ============================================================================
 
 const MainLayer = Layer.mergeAll(
-  makeSessionService(),
   FormatterLive,
   GistServiceLive
 )

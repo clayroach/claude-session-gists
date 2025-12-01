@@ -162,13 +162,31 @@ export interface Session {
 export interface SessionConfigOptions {
   readonly claudeDir: string
   readonly projectFilter: Option.Option<string>
+  /**
+   * If true, automatically scope to current working directory when no projectFilter is set.
+   * Defaults to true.
+   */
+  readonly scopeToCwd: boolean
+}
+
+/**
+ * @since 0.1.0
+ * @category utils
+ *
+ * Convert a file path to Claude's project directory name format.
+ * Claude stores sessions in ~/.claude/projects/{encoded-path} where the path
+ * uses dashes instead of slashes (e.g., /Users/foo/bar becomes -Users-foo-bar)
+ */
+export const pathToProjectName = (filePath: string): string => {
+  // Replace all forward slashes with dashes, prepend dash
+  return "-" + filePath.replace(/\//g, "-").replace(/^-/, "")
 }
 
 /**
  * @since 0.1.0
  * @category tags
  */
-export class SessionConfig extends Context.Tag("@effect/claude-session/SessionConfig")<
+export class SessionConfig extends Context.Tag("claude-session/SessionConfig")<
   SessionConfig,
   SessionConfigOptions
 >() {
@@ -179,7 +197,8 @@ export class SessionConfig extends Context.Tag("@effect/claude-session/SessionCo
     SessionConfig,
     {
       claudeDir: `${process.env["HOME"] ?? "~"}/.claude`,
-      projectFilter: Option.none()
+      projectFilter: Option.none(),
+      scopeToCwd: true
     }
   )
 
@@ -189,7 +208,8 @@ export class SessionConfig extends Context.Tag("@effect/claude-session/SessionCo
   static readonly make = (config: Partial<SessionConfigOptions>) =>
     Layer.succeed(SessionConfig, {
       claudeDir: config.claudeDir ?? `${process.env["HOME"] ?? "~"}/.claude`,
-      projectFilter: config.projectFilter ?? Option.none()
+      projectFilter: config.projectFilter ?? Option.none(),
+      scopeToCwd: config.scopeToCwd ?? true
     })
 }
 
@@ -199,7 +219,7 @@ export class SessionConfig extends Context.Tag("@effect/claude-session/SessionCo
  * 
  * Service for discovering and loading Claude Code sessions
  */
-export class SessionService extends Context.Tag("@effect/claude-session/SessionService")<
+export class SessionService extends Context.Tag("claude-session/SessionService")<
   SessionService,
   {
     /**
@@ -370,15 +390,23 @@ export const SessionServiceLive = Layer.effect(
           }))
         )
 
+        // Determine effective project filter
+        // If projectFilter is set, use it. Otherwise, if scopeToCwd is true, use CWD.
+        const effectiveFilter = Option.isSome(config.projectFilter)
+          ? config.projectFilter
+          : config.scopeToCwd
+            ? Option.some(pathToProjectName(process.cwd()))
+            : Option.none()
+
         // Find all UUID-named session files
         const sessions: SessionMetadata[] = []
 
         for (const entry of entries) {
           const projectPath = path.join(projectsDir, entry)
-          
+
           // Apply project filter if set
-          if (Option.isSome(config.projectFilter)) {
-            const filter = Option.getOrThrow(config.projectFilter)
+          if (Option.isSome(effectiveFilter)) {
+            const filter = Option.getOrThrow(effectiveFilter)
             if (!entry.toLowerCase().includes(filter.toLowerCase())) {
               continue
             }
@@ -517,7 +545,8 @@ export const makeSessionService = (config?: Partial<SessionConfigOptions>) =>
 
       const effectiveConfig: SessionConfigOptions = {
         claudeDir: config?.claudeDir ?? `${process.env["HOME"] ?? "~"}/.claude`,
-        projectFilter: config?.projectFilter ?? Option.none()
+        projectFilter: config?.projectFilter ?? Option.none(),
+        scopeToCwd: config?.scopeToCwd ?? true
       }
 
       const projectsDir = pathService.join(effectiveConfig.claudeDir, "projects")
@@ -545,13 +574,21 @@ export const makeSessionService = (config?: Partial<SessionConfigOptions>) =>
             }))
           )
 
+          // Determine effective project filter
+          // If projectFilter is set, use it. Otherwise, if scopeToCwd is true, use CWD.
+          const effectiveFilter = Option.isSome(effectiveConfig.projectFilter)
+            ? effectiveConfig.projectFilter
+            : effectiveConfig.scopeToCwd
+              ? Option.some(pathToProjectName(process.cwd()))
+              : Option.none()
+
           const sessions: SessionMetadata[] = []
 
           for (const entry of entries) {
             const projectPath = pathService.join(projectsDir, entry)
-            
-            if (Option.isSome(effectiveConfig.projectFilter)) {
-              const filter = Option.getOrThrow(effectiveConfig.projectFilter)
+
+            if (Option.isSome(effectiveFilter)) {
+              const filter = Option.getOrThrow(effectiveFilter)
               if (!entry.toLowerCase().includes(filter.toLowerCase())) {
                 continue
               }

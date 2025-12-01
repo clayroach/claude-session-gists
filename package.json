@@ -1,5 +1,5 @@
 {
-  "name": "@effect/claude-session",
+  "name": "claude-session",
   "version": "0.1.1",
   "description": "Effect-TS utilities for extracting and archiving Claude Code sessions",
   "type": "module",

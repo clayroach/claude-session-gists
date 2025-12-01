@@ -1,7 +1,7 @@
 /**
  * @since 0.1.0
  * 
- * @effect/claude-session - Effect-TS utilities for extracting and archiving Claude Code sessions
+ * claude-session - Effect-TS utilities for extracting and archiving Claude Code sessions
  * 
  * This package provides a type-safe, functional approach to working with
  * Claude Code session data. It enables you to:
@@ -15,7 +15,7 @@
  * ```ts
  * import { Effect } from "effect"
  * import { NodeContext, NodeRuntime } from "@effect/platform-node"
- * import { SessionService, SessionServiceLive, Formatter, FormatterLive } from "@effect/claude-session"
+ * import { SessionService, SessionServiceLive, Formatter, FormatterLive } from "claude-session"
  * 
  * const program = Effect.gen(function* () {
  *   const sessions = yield* SessionService
@@ -87,6 +87,12 @@ export {
   type Session,
   
   /**
+   * Configuration options for session discovery
+   * @since 0.1.0
+   */
+  type SessionConfigOptions,
+
+  /**
    * Configuration tag for session discovery
    * @since 0.1.0
    */
@@ -120,7 +126,13 @@ export {
    * Parse a JSONL line
    * @since 0.1.0
    */
-  parseJsonlLine
+  parseJsonlLine,
+
+  /**
+   * Convert a file path to Claude's project directory name format
+   * @since 0.1.0
+   */
+  pathToProjectName
 } from "./Session.js"
 
 // ============================================================================

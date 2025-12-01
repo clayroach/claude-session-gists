@@ -1,8 +1,8 @@
-# @effect/claude-session
+# claude-session
 
 Archive your Claude Code conversations alongside your commits for complete decision provenance.
 
-[![npm version](https://badge.fury.io/js/@effect%2Fclaude-session.svg)](https://badge.fury.io/js/@effect%2Fclaude-session)
+[![npm version](https://badge.fury.io/js/claude-session.svg)](https://badge.fury.io/js/claude-session)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Why?
@@ -13,8 +13,16 @@ Important design and implementation decisions happen in Claude Code conversation
 
 ### 1. Install Globally
 
+**Using npm:**
+
 ```bash
-pnpm add -g @effect/claude-session
+npm install -g claude-session
+```
+
+**Using pnpm:**
+
+```bash
+pnpm add -g claude-session
 ```
 
 ### 2. Authenticate with GitHub
@@ -89,18 +97,29 @@ chmod +x .husky/prepare-commit-msg .husky/post-commit
 ## CLI Commands
 
 ```bash
-# List available sessions
+# List sessions for current project directory
 claude-session list
 
-# Export a session
+# List sessions from all projects
+claude-session list --all
+
+# List sessions matching a project name
+claude-session list --project myproject
+
+# Export most recent session from current project
 claude-session export --format markdown
 
-# Create a gist manually
+# Create a gist from current project's session
 claude-session gist --since last-commit
+
+# Create a gist from a specific project
+claude-session gist --project myproject
 
 # Link a commit to an existing gist
 claude-session link-commit --gist <gist-url>
 ```
+
+> **Note:** By default, all commands scope to sessions from your current working directory. Use `--all` to see all projects or `--project` to filter by name.
 
 ## Example Workflow
 
