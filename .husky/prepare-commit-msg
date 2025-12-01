@@ -20,9 +20,9 @@ PROJECT_DIR="$(dirname "$0")/.."
 
 if [ -f "$PROJECT_DIR/package.json" ] && grep -q "claude-session-gists" "$PROJECT_DIR/package.json"; then
   # Running in the project itself, use pnpm dev
-  GIST_TRAILER=$(cd "$PROJECT_DIR" && pnpm dev gist --commit --since last-commit 2>/dev/null)
-elif command -v claude-session &> /dev/null; then
-  GIST_TRAILER=$(claude-session gist --commit --since last-commit 2>/dev/null)
+  GIST_TRAILER=$(cd "$PROJECT_DIR" && pnpm dev create --commit --since last-commit 2>/dev/null)
+elif command -v claude-session-gists &> /dev/null; then
+  GIST_TRAILER=$(claude-session-gists create --commit --since last-commit 2>/dev/null)
 fi
 
 # Extract just the Claude-Session line (pnpm adds prefix output)
@@ -35,7 +35,7 @@ if [ -n "$GIST_LINE" ]; then
   echo "$GIST_LINE" >> "$COMMIT_MSG_FILE"
 
   # Save gist URL to temp file for post-commit hook
-  echo "$GIST_LINE" > /tmp/claude-session-gist-url
+  echo "$GIST_LINE" > /tmp/claude-session-gists-url
 fi
 
 exit 0

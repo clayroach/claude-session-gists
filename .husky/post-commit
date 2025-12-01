@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 
 # Check if we have a gist URL from prepare-commit-msg
-if [ ! -f /tmp/claude-session-gist-url ]; then
+if [ ! -f /tmp/claude-session-gists-url ]; then
   exit 0
 fi
 
-GIST_LINE=$(cat /tmp/claude-session-gist-url)
-rm -f /tmp/claude-session-gist-url
+GIST_LINE=$(cat /tmp/claude-session-gists-url)
+rm -f /tmp/claude-session-gists-url
 
 # Extract gist URL from "Claude-Session: <url>"
 GIST_URL=$(echo "$GIST_LINE" | sed 's/Claude-Session: //')
@@ -21,8 +21,8 @@ PROJECT_DIR="$(dirname "$0")/.."
 if [ -f "$PROJECT_DIR/package.json" ] && grep -q "claude-session-gists" "$PROJECT_DIR/package.json"; then
   # Running in the project itself, use pnpm dev
   cd "$PROJECT_DIR" && pnpm dev link-commit --gist "$GIST_URL" 2>/dev/null
-elif command -v claude-session &> /dev/null; then
-  claude-session link-commit --gist "$GIST_URL" 2>/dev/null
+elif command -v claude-session-gists &> /dev/null; then
+  claude-session-gists link-commit --gist "$GIST_URL" 2>/dev/null
 fi
 
 exit 0
