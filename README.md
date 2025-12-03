@@ -1,8 +1,8 @@
-# claude-session
+# claude-session-gists
 
 Archive your Claude Code conversations alongside your commits for complete decision provenance.
 
-[![npm version](https://badge.fury.io/js/claude-session.svg)](https://badge.fury.io/js/claude-session)
+[![npm version](https://badge.fury.io/js/claude-session-gists.svg)](https://badge.fury.io/js/claude-session-gists)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Why?
@@ -16,13 +16,13 @@ Important design and implementation decisions happen in Claude Code conversation
 **Using npm:**
 
 ```bash
-npm install -g claude-session
+npm install -g claude-session-gists
 ```
 
 **Using pnpm:**
 
 ```bash
-pnpm add -g claude-session
+pnpm add -g claude-session-gists
 ```
 
 ### 2. Authenticate with GitHub
@@ -60,12 +60,12 @@ if [ "$COMMIT_SOURCE" = "merge" ] || [ "$COMMIT_SOURCE" = "squash" ] || [ -n "$3
 fi
 
 # Create gist and save URL
-GIST_TRAILER=$(claude-session gist --commit --since last-commit 2>/dev/null | grep "^Claude-Session:" | tail -1)
+GIST_TRAILER=$(claude-session-gists create --commit --since last-commit 2>/dev/null | grep "^Claude-Session:" | tail -1)
 
 if [ -n "$GIST_TRAILER" ]; then
   echo "" >> "$COMMIT_MSG_FILE"
   echo "$GIST_TRAILER" >> "$COMMIT_MSG_FILE"
-  echo "$GIST_TRAILER" > /tmp/claude-session-gist-url
+  echo "$GIST_TRAILER" > /tmp/claude-session-gists-gist-url
 fi
 ```
 
@@ -75,10 +75,10 @@ Create `.husky/post-commit`:
 #!/usr/bin/env bash
 
 # Link commit to gist
-if [ -f /tmp/claude-session-gist-url ]; then
-  GIST_URL=$(cat /tmp/claude-session-gist-url | sed 's/Claude-Session: //')
-  rm -f /tmp/claude-session-gist-url
-  [ -n "$GIST_URL" ] && claude-session link-commit --gist "$GIST_URL" 2>/dev/null
+if [ -f /tmp/claude-session-gists-gist-url ]; then
+  GIST_URL=$(cat /tmp/claude-session-gists-gist-url | sed 's/Claude-Session: //')
+  rm -f /tmp/claude-session-gists-gist-url
+  [ -n "$GIST_URL" ] && claude-session-gists link-commit --gist "$GIST_URL" 2>/dev/null
 fi
 ```
 
@@ -98,25 +98,25 @@ chmod +x .husky/prepare-commit-msg .husky/post-commit
 
 ```bash
 # List sessions for current project directory
-claude-session list
+claude-session-gists list
 
 # List sessions from all projects
-claude-session list --all
+claude-session-gists list --all
 
 # List sessions matching a project name
-claude-session list --project myproject
+claude-session-gists list --project myproject
 
 # Export most recent session from current project
-claude-session export --format markdown
+claude-session-gists export --format markdown
 
 # Create a gist from current project's session
-claude-session gist --since last-commit
+claude-session-gists create --since last-commit
 
 # Create a gist from a specific project
-claude-session gist --project myproject
+claude-session-gists create --project myproject
 
 # Link a commit to an existing gist
-claude-session link-commit --gist <gist-url>
+claude-session-gists link-commit --gist <gist-url>
 ```
 
 > **Note:** By default, all commands scope to sessions from your current working directory. Use `--all` to see all projects or `--project` to filter by name.

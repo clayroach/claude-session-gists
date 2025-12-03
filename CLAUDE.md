@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-`claude-session` is an Effect-TS library for extracting and archiving Claude Code sessions. It provides:
+`claude-session-gists` is an Effect-TS library for extracting and archiving Claude Code sessions. It provides:
 - Session discovery from `~/.claude/projects`
 - Multiple output formats (Markdown, JSON, HTML)
 - GitHub Gist integration for archiving
@@ -92,8 +92,8 @@ The `dist/` directory contains the publishable package with separate ESM, CJS, a
 
 After publishing to Verdaccio:
 ```bash
-pnpm install -g claude-session --registry http://localhost:4873/
-claude-session list
+pnpm install -g claude-session-gists --registry http://localhost:4873/
+claude-session-gists list
 ```
 
 ## Husky Hooks (Automatic Session Archiving)
@@ -103,10 +103,10 @@ This project uses Husky hooks to automatically archive Claude Code sessions with
 ### How It Works
 
 1. **prepare-commit-msg** - Runs before commit is finalized:
-   - Executes `pnpm dev gist --commit --since last-commit`
+   - Executes `pnpm dev create --commit --since last-commit`
    - Creates a gist with only messages since the last commit
    - Appends `Claude-Session: <url>` trailer to commit message
-   - Saves gist URL to `/tmp/claude-session-gist-url`
+   - Saves gist URL to `/tmp/claude-session-gists-url`
 
 2. **post-commit** - Runs after commit is created:
    - Reads gist URL from temp file
@@ -157,7 +157,7 @@ git commit --no-verify -m "your message"
 Test the workflow manually:
 ```bash
 # Create a gist for current session since last commit
-pnpm dev gist --commit --since last-commit
+pnpm dev create --commit --since last-commit
 
 # Link current commit to a gist
 pnpm dev link-commit --gist <gist-url>

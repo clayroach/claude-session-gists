@@ -1,5 +1,5 @@
 {
-  "name": "claude-session",
+  "name": "claude-session-gists",
   "version": "0.1.1",
   "description": "Effect-TS utilities for extracting and archiving Claude Code sessions",
   "type": "module",
@@ -7,12 +7,12 @@
   "author": "Clay Roach",
   "repository": {
     "type": "git",
-    "url": "https://github.com/clayroach/claude-session"
+    "url": "https://github.com/clayroach/claude-session-gists"
   },
   "bugs": {
-    "url": "https://github.com/clayroach/claude-session/issues"
+    "url": "https://github.com/clayroach/claude-session-gists/issues"
   },
-  "homepage": "https://github.com/clayroach/claude-session#readme",
+  "homepage": "https://github.com/clayroach/claude-session-gists#readme",
   "publishConfig": {
     "access": "public",
     "directory": "dist",
@@ -79,7 +79,7 @@
     }
   },
   "bin": {
-    "claude-session": "./esm/bin/cli.js"
+    "claude-session-gists": "./esm/bin/cli.js"
   },
   "main": "./cjs/index.js",
   "module": "./esm/index.js",

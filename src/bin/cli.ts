@@ -5,11 +5,11 @@
  * CLI for exporting Claude Code sessions to GitHub Gists.
  * 
  * Usage:
- *   claude-session list                    # List available sessions
- *   claude-session export                  # Export most recent session
- *   claude-session export --project foo    # Export session from project
- *   claude-session gist                    # Export to GitHub Gist
- *   claude-session gist --commit           # Export and output for git commit
+ *   claude-session-gists list                    # List available sessions
+ *   claude-session-gists export                  # Export most recent session
+ *   claude-session-gists export --project foo    # Export session from project
+ *   claude-session-gists create                  # Create GitHub Gist from session
+ *   claude-session-gists create --commit         # Create gist and output for git commit
  */
 import { Command, Options } from "@effect/cli"
 import { NodeContext, NodeRuntime } from "@effect/platform-node"
@@ -275,11 +275,11 @@ const exportCommand = Command.make(
 )
 
 // ============================================================================
-// Gist Command
+// Create Command
 // ============================================================================
 
-const gistCommand = Command.make(
-  "gist",
+const createCommand = Command.make(
+  "create",
   {
     project: projectOption,
     format: formatOption,
@@ -570,9 +570,9 @@ const linkCommitCommand = Command.make(
 // Main Command
 // ============================================================================
 
-const mainCommand = Command.make("claude-session").pipe(
+const mainCommand = Command.make("claude-session-gists").pipe(
   Command.withDescription("Export Claude Code sessions to GitHub Gists for decision provenance"),
-  Command.withSubcommands([listCommand, exportCommand, gistCommand, hookCommand, linkCommitCommand])
+  Command.withSubcommands([listCommand, exportCommand, createCommand, hookCommand, linkCommitCommand])
 )
 
 // ============================================================================
@@ -580,8 +580,8 @@ const mainCommand = Command.make("claude-session").pipe(
 // ============================================================================
 
 const cli = Command.run(mainCommand, {
-  name: "claude-session",
-  version: "0.1.0"
+  name: "claude-session-gists",
+  version: "0.1.1"
 })
 
 // ============================================================================
