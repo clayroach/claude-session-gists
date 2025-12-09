@@ -16,7 +16,7 @@ const createMessage = (
   timestamp: Option.none()
 })
 
-const createSession = (messages: NormalizedMessage[]): Session => ({
+const createSession = (messages: Array<NormalizedMessage>): Session => ({
   metadata: {
     id: "test-session-id",
     projectPath: "/test/project",

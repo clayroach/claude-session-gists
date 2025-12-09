@@ -399,7 +399,7 @@ export const SessionServiceLive = Layer.effect(
             : Option.none()
 
         // Find all UUID-named session files
-        const sessions: SessionMetadata[] = []
+        const sessions: Array<SessionMetadata> = []
 
         for (const entry of entries) {
           const projectPath = path.join(projectsDir, entry)
@@ -413,7 +413,7 @@ export const SessionServiceLive = Layer.effect(
           }
 
           const projectEntries = yield* fs.readDirectory(projectPath).pipe(
-            Effect.catchAll(() => Effect.succeed([] as string[]))
+            Effect.catchAll(() => Effect.succeed([] as Array<string>))
           )
 
           for (const file of projectEntries) {
@@ -469,7 +469,7 @@ export const SessionServiceLive = Layer.effect(
         )
 
         const lines = content.split("\n").filter(l => l.trim())
-        const messages: NormalizedMessage[] = []
+        const messages: Array<NormalizedMessage> = []
 
         for (const line of lines) {
           const parsed = yield* parseJsonlLine(line).pipe(
@@ -582,7 +582,7 @@ export const makeSessionService = (config?: Partial<SessionConfigOptions>) =>
               ? Option.some(pathToProjectName(process.cwd()))
               : Option.none()
 
-          const sessions: SessionMetadata[] = []
+          const sessions: Array<SessionMetadata> = []
 
           for (const entry of entries) {
             const projectPath = pathService.join(projectsDir, entry)
@@ -595,7 +595,7 @@ export const makeSessionService = (config?: Partial<SessionConfigOptions>) =>
             }
 
             const projectEntries = yield* fs.readDirectory(projectPath).pipe(
-              Effect.catchAll(() => Effect.succeed([] as string[]))
+              Effect.catchAll(() => Effect.succeed([] as Array<string>))
             )
 
             for (const file of projectEntries) {
@@ -647,7 +647,7 @@ export const makeSessionService = (config?: Partial<SessionConfigOptions>) =>
           )
 
           const lines = content.split("\n").filter(l => l.trim())
-          const messages: NormalizedMessage[] = []
+          const messages: Array<NormalizedMessage> = []
 
           for (const line of lines) {
             const parsed = yield* parseJsonlLine(line).pipe(

@@ -1,0 +1,77 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
+
+      - name: Create Release Pull Request or Publish
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          publish: pnpm release
+          title: "chore: version packages"
+          commit: "chore: version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.CHANGESET_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Checkout for notifications
+        if: always()
+        uses: actions/checkout@v4
+
+      - name: Notify Discord on Publish
+        if: steps.changesets.outputs.published == 'true'
+        uses: atrim-ai/github-actions/discord-notify@main
+        with:
+          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          status: 'success'
+          job-name: '📦 Package Published'
+          workflow-name: 'Release'
+          error-details: |
+            **Published Package:**
+            ```json
+            ${{ steps.changesets.outputs.publishedPackages }}
+            ```
+
+      - name: Notify Discord on Failure
+        if: failure()
+        uses: atrim-ai/github-actions/discord-notify@main
+        with:
+          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          status: 'failure'
+          job-name: 'Release Pipeline'
+          workflow-name: 'Release'
+          error-details: 'Release workflow failed during tests, build, or publish step.'

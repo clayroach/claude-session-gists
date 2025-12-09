@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Type check
+        run: pnpm check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
+
+  notify:
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: always()
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Notify Discord
+        uses: atrim-ai/github-actions/discord-notify@main
+        with:
+          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          status: ${{ needs.build.result == 'success' && 'success' || 'failure' }}
+          job-name: 'CI Pipeline'
+          workflow-name: 'Continuous Integration'
+          error-details: |
+            **Job Results:**
+            • Build: ${{ needs.build.result }}
