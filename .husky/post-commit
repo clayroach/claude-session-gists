@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+# Skip in CI environments
+if [ -n "$CI" ]; then
+  exit 0
+fi
+
 # Check if we have a gist URL from prepare-commit-msg
 if [ ! -f /tmp/claude-session-gists-url ]; then
   exit 0

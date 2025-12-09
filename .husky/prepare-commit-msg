@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+# Skip in CI environments
+if [ -n "$CI" ]; then
+  exit 0
+fi
+
 COMMIT_MSG_FILE=$1
 COMMIT_SOURCE=$2
 
