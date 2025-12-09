@@ -1,5 +1,5 @@
 {
-  "name": "@clayroach/claude-session-gists",
+  "name": "claude-session-gists",
   "version": "0.1.2",
   "description": "Effect-TS utilities for extracting and archiving Claude Code sessions",
   "type": "module",
