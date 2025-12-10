@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * @since 0.1.0
- * 
+ *
  * CLI for exporting Claude Code sessions to GitHub Gists.
- * 
+ *
  * Usage:
  *   claude-session-gists list                    # List available sessions
  *   claude-session-gists export                  # Export most recent session
@@ -11,6 +11,9 @@
  *   claude-session-gists create                  # Create GitHub Gist from session
  *   claude-session-gists create --commit         # Create gist and output for git commit
  */
+import { readFileSync } from "node:fs"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
 import { Command, Options } from "@effect/cli"
 import { NodeContext, NodeRuntime } from "@effect/platform-node"
 import * as PlatformCommand from "@effect/platform/Command"
@@ -29,6 +32,16 @@ import {
   type OutputFormat,
   type Session
 } from "../index.js"
+
+// ============================================================================
+// Package Version
+// ============================================================================
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const packageJson = JSON.parse(
+  readFileSync(join(__dirname, "../../package.json"), "utf-8")
+) as { version: string }
+const VERSION = packageJson.version
 
 // ============================================================================
 // Shared Options
@@ -581,7 +594,7 @@ const mainCommand = Command.make("claude-session-gists").pipe(
 
 const cli = Command.run(mainCommand, {
   name: "claude-session-gists",
-  version: "0.1.1"
+  version: VERSION
 })
 
 // ============================================================================
